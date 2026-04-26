@@ -864,7 +864,7 @@
           ctx.globalAlpha = layer.opacity;
           ctx.translate(vp.offsetX, vp.offsetY);
           ctx.scale(vp.scale, vp.scale);
-          ctx.drawImage(img, 0, 0);
+          ctx.drawImage(img, layer.offsetX || 0, layer.offsetY || 0);
           ctx.restore();
         }
       }
@@ -924,7 +924,8 @@
         const id = this._genId();
         const layer = {
           id, name, type: 'image', visible: true, opacity: 1, locked: false,
-          order: this.sm.state.layers.length, annotations: []
+          order: this.sm.state.layers.length, annotations: [],
+          offsetX: 0, offsetY: 0, offsetEnabled: false
         };
         this.sm.state.layers.push(layer);
         this.viewport.addImage(id, img);
@@ -1257,6 +1258,8 @@
         this.activeTool = null;
         this._spaceDown = false;
         this._panning = false;
+        this._overlayDragging = false;
+        this._overlayDragStart = null;
         this._bindMouse();
       }
 
@@ -1307,6 +1310,13 @@
           this.container.style.cursor = 'grabbing';
           return;
         }
+        const activeLayer = this.sm.state.layers.find(l => l.id === this.sm.state.activeLayerId);
+        if (activeLayer && activeLayer.type === 'image' && activeLayer.offsetEnabled) {
+          this._overlayDragging = true;
+          this._overlayDragStart = { x: coords.x, y: coords.y, ox: activeLayer.offsetX || 0, oy: activeLayer.offsetY || 0 };
+          this.container.style.cursor = 'move';
+          return;
+        }
         if (this.activeTool && this.tools[this.activeTool]) {
           const handler = this.tools[this.activeTool];
           if (handler.mousedown) handler.mousedown(e, coords);
@@ -1323,6 +1333,25 @@
           this.viewport.panMove(coords.x, coords.y);
           return;
         }
+        if (this._overlayDragging && this._overlayDragStart) {
+          const vp = this.sm.state.viewport;
+          const dx = (coords.x - this._overlayDragStart.x) / vp.scale;
+          const dy = (coords.y - this._overlayDragStart.y) / vp.scale;
+          const activeLayer = this.sm.state.layers.find(l => l.id === this.sm.state.activeLayerId);
+          if (activeLayer) {
+            activeLayer.offsetX = this._overlayDragStart.ox + dx;
+            activeLayer.offsetY = this._overlayDragStart.oy + dy;
+            this.viewport.render();
+            const propContent = document.getElementById('property-content');
+            if (propContent) {
+              const xInputs = propContent.querySelectorAll('.overlay-offset-x');
+              const yInputs = propContent.querySelectorAll('.overlay-offset-y');
+              xInputs.forEach(i => i.value = Math.round(activeLayer.offsetX * 100) / 100);
+              yInputs.forEach(i => i.value = Math.round(activeLayer.offsetY * 100) / 100);
+            }
+          }
+          return;
+        }
         if (this.activeTool && this.tools[this.activeTool]) {
           const handler = this.tools[this.activeTool];
           if (handler.mousemove) handler.mousemove(e, coords);
@@ -1334,6 +1363,13 @@
         if (this._panning) {
           this._panning = false;
           this.viewport.panEnd();
+          const cursors = { select: 'default', point: 'crosshair', rect: 'crosshair', line: 'crosshair', circle: 'crosshair', pan: 'grab' };
+          this.container.style.cursor = cursors[this.activeTool] || 'default';
+          return;
+        }
+        if (this._overlayDragging) {
+          this._overlayDragging = false;
+          this._overlayDragStart = null;
           const cursors = { select: 'default', point: 'crosshair', rect: 'crosshair', line: 'crosshair', circle: 'crosshair', pan: 'grab' };
           this.container.style.cursor = cursors[this.activeTool] || 'default';
           return;
@@ -1917,7 +1953,12 @@
       const ann = findAnnotation(sm.state.selectedId);
 
       if (!ann) {
-        container.innerHTML = '<div class="prop-empty">未选中标注</div>';
+        const activeLayer = sm.state.layers.find(l => l.id === sm.state.activeLayerId);
+        if (activeLayer && activeLayer.type === 'image') {
+          _renderImageLayerProps(container, activeLayer);
+        } else {
+          container.innerHTML = '<div class="prop-empty">未选中标注</div>';
+        }
         return;
       }
 
@@ -1972,6 +2013,75 @@
       }
     }
 
+    function _renderImageLayerProps(container, layer) {
+      container.innerHTML = '';
+      const typeDiv = document.createElement('div');
+      typeDiv.className = 'prop-type-label';
+      typeDiv.textContent = '🖼 ' + layer.name;
+      container.appendChild(typeDiv);
+
+      const toggleRow = document.createElement('div');
+      toggleRow.className = 'prop-row';
+      toggleRow.style.alignItems = 'center';
+      const toggleLabel = document.createElement('span');
+      toggleLabel.className = 'prop-label';
+      toggleLabel.textContent = '偏移';
+      toggleRow.appendChild(toggleLabel);
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.checked = !!layer.offsetEnabled;
+      toggle.style.cursor = 'pointer';
+      toggle.addEventListener('change', () => {
+        layer.offsetEnabled = toggle.checked;
+        renderPropertyPanel();
+        viewport.render();
+      });
+      toggleRow.appendChild(toggle);
+      container.appendChild(toggleRow);
+
+      if (layer.offsetEnabled) {
+        const xyRow = document.createElement('div');
+        xyRow.className = 'prop-row';
+        xyRow.style.gap = '6px';
+        const xLabel = document.createElement('span');
+        xLabel.className = 'prop-label';
+        xLabel.textContent = 'X';
+        xyRow.appendChild(xLabel);
+        const xInput = document.createElement('input');
+        xInput.type = 'number';
+        xInput.step = 'any';
+        xInput.className = 'prop-input overlay-offset-x';
+        xInput.value = layer.offsetX || 0;
+        xInput.style.width = '60px';
+        xInput.addEventListener('change', () => {
+          layer.offsetX = parseFloat(xInput.value) || 0;
+          viewport.render();
+        });
+        xyRow.appendChild(xInput);
+        const yLabel = document.createElement('span');
+        yLabel.className = 'prop-label';
+        yLabel.textContent = 'Y';
+        xyRow.appendChild(yLabel);
+        const yInput = document.createElement('input');
+        yInput.type = 'number';
+        yInput.step = 'any';
+        yInput.className = 'prop-input overlay-offset-y';
+        yInput.value = layer.offsetY || 0;
+        yInput.style.width = '60px';
+        yInput.addEventListener('change', () => {
+          layer.offsetY = parseFloat(yInput.value) || 0;
+          viewport.render();
+        });
+        xyRow.appendChild(yInput);
+        container.appendChild(xyRow);
+
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:11px;color:var(--text-muted);padding:4px 0;';
+        hint.textContent = '可在画布中拖动图像';
+        container.appendChild(hint);
+      }
+    }
+
     function _exportRectCrop(ann) {
       const imageLayers = sm.state.layers.filter(l => l.type === 'image' && l.visible);
       if (imageLayers.length === 0) return;
@@ -1985,7 +2095,7 @@
       const compCtx = composite.getContext('2d');
       for (const { layer, img } of layerImgs) {
         compCtx.globalAlpha = layer.opacity;
-        compCtx.drawImage(img, 0, 0);
+        compCtx.drawImage(img, layer.offsetX || 0, layer.offsetY || 0);
       }
       compCtx.globalAlpha = 1;
       const cropX = Math.max(0, Math.round(ann.x));
@@ -2168,6 +2278,7 @@
           if (e.target.closest('.layer-btn')) return;
           sm.update({ activeLayerId: layer.id });
           renderLayerPanel();
+          renderPropertyPanel();
         });
         item.querySelector('.visibility-btn').addEventListener('click', () => {
           layerManager.toggleVisibility(layer.id);
