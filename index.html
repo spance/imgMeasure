@@ -1,0 +1,2468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>imgMeasure - 工程图像测量标注工具</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --danger: #f85149;
+      --success: #3fb950;
+      --warning: #d29922;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg-primary);
+    }
+
+    #app {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--border);
+    }
+
+    /* Menubar */
+    #menubar {
+      height: 32px;
+      min-height: 32px;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-secondary);
+      gap: 2px;
+    }
+
+    .menu-item {
+      position: relative;
+      padding: 4px 10px;
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 4px;
+      user-select: none;
+      font-size: 13px;
+    }
+    .menu-item:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .menu-tool-indicator {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 2px 8px;
+      background: var(--bg-tertiary);
+      border-radius: 3px;
+      user-select: none;
+    }
+    .menu-tool-indicator .tool-indicator-icon { font-size: 11px; }
+
+    .menu-dropdown-item.active-tool {
+      color: var(--accent);
+      background: rgba(59, 130, 246, 0.1);
+    }
+    .menu-dropdown-item.active-tool::before {
+      content: '●';
+      margin-right: 6px;
+      font-size: 8px;
+    }
+
+    /* Workspace */
+    #workspace {
+      display: flex;
+      flex-direction: row;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left Panel */
+    #left-panel {
+      width: 260px;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      background: var(--bg-secondary);
+      overflow-y: auto;
+      overflow-x: hidden;
+      transition: width 0.2s ease, min-width 0.2s ease;
+    }
+    #left-panel.collapsed {
+      width: 0;
+      min-width: 0;
+      overflow: hidden;
+      padding: 0;
+      border-right: none;
+    }
+
+    /* Right Panel */
+    #right-panel {
+      width: 280px;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+      background: var(--bg-secondary);
+      overflow-y: auto;
+      overflow-x: hidden;
+      transition: width 0.2s ease, min-width 0.2s ease;
+    }
+    #right-panel.collapsed {
+      width: 0;
+      min-width: 0;
+      overflow: hidden;
+      padding: 0;
+      border-left: none;
+    }
+
+    /* Panel Header */
+    .panel-header {
+      font-weight: bold;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--accent);
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(33, 38, 45, 0.5);
+    }
+
+    .panel-content {
+      padding: 8px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    /* Layer Panel */
+    .layer-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .layer-item[draggable="true"] {
+      cursor: grab;
+    }
+    .layer-header[draggable="true"] {
+      cursor: grab;
+    }
+    .layer-item.dragging {
+      opacity: 0.4;
+    }
+    .layer-item.drag-over {
+      border-top: 2px solid var(--accent);
+    }
+    .layer-item:hover {
+      background: var(--bg-tertiary);
+    }
+    .layer-item.active {
+      background: rgba(59, 130, 246, 0.15);
+      border-left: 3px solid var(--accent);
+    }
+    .layer-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .layer-name {
+      flex: 1;
+      font-size: 12px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .layer-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      color: var(--text-muted);
+    }
+    .layer-btn:hover {
+      background: var(--bg-tertiary);
+      color: var(--text);
+    }
+    .layer-opacity {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-left: 20px;
+    }
+    .opacity-slider {
+      flex: 1;
+      height: 4px;
+      -webkit-appearance: none;
+      background: var(--bg-tertiary);
+      border-radius: 2px;
+      outline: none;
+    }
+    .opacity-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    .opacity-value {
+      font-size: 10px;
+      color: var(--text-muted);
+      width: 30px;
+      text-align: right;
+    }
+
+    /* Annotation List */
+    .ann-group-header {
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 6px 10px 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .ann-item {
+      padding: 4px 10px 4px 20px;
+      font-size: 12px;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 26px;
+      box-sizing: border-box;
+    }
+    .ann-item:hover {
+      background: var(--bg-tertiary);
+    }
+    .ann-item.selected {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent);
+    }
+    .ann-item .ann-delete {
+      visibility: hidden;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      padding: 0 2px;
+      line-height: 1;
+      border-radius: 3px;
+      flex-shrink: 0;
+      width: 18px;
+      text-align: center;
+    }
+    .ann-item:hover .ann-delete {
+      visibility: visible;
+    }
+    .ann-item .ann-delete:hover {
+      color: var(--danger);
+      background: rgba(248, 81, 73, 0.15);
+    }
+    .ann-info {
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-left: auto;
+      font-family: monospace;
+    }
+
+    #btn-overlay-layer {
+      display: none;
+    }
+
+    /* Canvas Area */
+    #canvas-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #0a0e14;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    canvas#image-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    svg#annotation-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* Empty State */
+    #empty-state {
+      position: absolute; top: 12px; left: 12px; width: calc(100% - 24px); height: calc(100% - 24px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 5; border: 2px dashed var(--border); border-radius: 8px;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    #empty-state .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+    #empty-state .empty-state-text { font-size: 16px; color: var(--text-muted); text-align: center; line-height: 1.6; transition: color 0.15s ease; }
+    #empty-state .empty-state-hint { font-size: 12px; color: var(--text-muted); opacity: 0.5; margin-top: 8px; }
+    #empty-state:hover .empty-state-text { color: var(--accent); }
+    #empty-state:hover { border-color: var(--accent); }
+    #empty-state.drag-over { background: rgba(59, 130, 246, 0.08); border-color: var(--accent); }
+
+    /* Statusbar */
+    #statusbar {
+      height: 24px;
+      min-height: 24px;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      background: var(--bg-secondary);
+      gap: 16px;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .status-spacer { flex: 1; }
+
+    /* Input fields */
+    input[type="text"],
+    input[type="number"],
+    select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-family: monospace;
+      outline: none;
+      width: 100%;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      border-color: var(--accent);
+    }
+
+    /* Buttons */
+    button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: system-ui, -apple-system, sans-serif;
+      transition: background 0.15s ease;
+    }
+    button:hover {
+      background: var(--accent-hover);
+    }
+    button.btn-danger {
+      background: var(--danger);
+    }
+    button.btn-danger:hover {
+      background: #da3633;
+    }
+    button.btn-sm {
+      padding: 2px 8px;
+      font-size: 11px;
+    }
+    button.btn-icon {
+      padding: 4px 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .layer-item, .ann-item, button, .menu-dropdown-item, .panel-toggle, .panel-expand-btn {
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+
+    /* Property Panel */
+    .property-group {
+      margin-bottom: 8px;
+    }
+    .prop-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .prop-label {
+      width: 40px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .prop-input {
+      flex: 1;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-family: monospace;
+      outline: none;
+    }
+    .prop-input:focus {
+      border-color: var(--accent);
+    }
+    .prop-readonly {
+      flex: 1;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-family: monospace;
+      outline: none;
+    }
+    .prop-type-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .prop-empty {
+      color: var(--text-muted);
+      font-size: 12px;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    /* Input Panel */
+    .input-form-group {
+      margin-bottom: 8px;
+    }
+    .input-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .input-row label {
+      font-size: 12px;
+      color: var(--text-muted);
+      min-width: 28px;
+      flex-shrink: 0;
+    }
+    .input-row input {
+      flex: 1;
+    }
+    .input-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .menu-dropdown { display: none; position: absolute; top: 100%; left: 0; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 4px; padding: 4px 0; min-width: 180px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+    .menu-dropdown.show { display: block; }
+    .menu-dropdown-item { padding: 6px 12px; font-size: 12px; color: var(--text); cursor: pointer; display: flex; justify-content: space-between; }
+    .menu-dropdown-item:hover { background: var(--accent); color: white; }
+    .menu-dropdown-item.disabled { color: var(--text-muted); pointer-events: none; }
+    .menu-separator { height: 1px; background: var(--border); margin: 4px 0; }
+    .menu-shortcut { color: var(--text-muted); font-size: 11px; }
+    .menu-dropdown-item:hover .menu-shortcut { color: rgba(255,255,255,0.7); }
+
+    .panel-toggle { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; }
+    .panel-toggle:hover { color: var(--text); }
+
+    .panel-expand-btn { position: absolute; top: 50%; transform: translateY(-50%); z-index: 100; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; padding: 12px 4px; font-size: 12px; display: none; line-height: 1; }
+    .panel-expand-btn:hover { color: var(--text); background: var(--bg-tertiary); }
+    .panel-expand-btn.left { left: 0; border-radius: 0 4px 4px 0; border-left: none; }
+    .panel-expand-btn.right { right: 0; border-radius: 4px 0 0 4px; border-right: none; }
+
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 20px; min-width: 400px; max-width: 600px; max-height: 80vh; overflow-y: auto; color: var(--text); }
+    .modal h2 { margin: 0 0 12px; font-size: 16px; color: var(--accent); }
+    .modal p { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .modal-close { float: right; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 0 4px; line-height: 1; }
+    .modal-close:hover { color: var(--text); }
+    .shortcut-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .shortcut-table td { padding: 5px 8px; font-size: 12px; border-bottom: 1px solid var(--border); }
+    .shortcut-table td:first-child { color: var(--text-muted); width: 50%; }
+    .shortcut-table td:last-child { font-family: monospace; color: var(--text); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="menubar">
+      <span class="menu-item" id="menu-file" data-menu="file">文件
+        <div class="menu-dropdown" id="dropdown-file">
+          <div class="menu-dropdown-item" data-action="open-image">打开图片</div>
+          <div class="menu-dropdown-item" data-action="overlay-image">叠加图片</div>
+          <div class="menu-dropdown-item" data-action="add-ann-layer">新建标注层</div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" data-action="clear-canvas">清空画布</div>
+        </div>
+      </span>
+      <span class="menu-item" id="menu-edit" data-menu="edit">编辑
+        <div class="menu-dropdown" id="dropdown-edit">
+          <div class="menu-dropdown-item" data-action="undo">撤销 <span class="menu-shortcut">Ctrl+Z</span></div>
+          <div class="menu-dropdown-item" data-action="redo">重做 <span class="menu-shortcut">Ctrl+Shift+Z</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" data-action="delete-selected">删除选中 <span class="menu-shortcut">Delete</span></div>
+          <div class="menu-dropdown-item" data-action="select-all">全选</div>
+        </div>
+      </span>
+      <span class="menu-item" id="menu-view" data-menu="view">视图
+        <div class="menu-dropdown" id="dropdown-view">
+          <div class="menu-dropdown-item" data-action="zoom-in">放大 <span class="menu-shortcut">+</span></div>
+          <div class="menu-dropdown-item" data-action="zoom-out">缩小 <span class="menu-shortcut">−</span></div>
+          <div class="menu-dropdown-item" data-action="fit-canvas">适配画布 <span class="menu-shortcut">Ctrl+0</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-dropdown-item" data-action="toggle-left-panel">切换左面板</div>
+          <div class="menu-dropdown-item" data-action="toggle-right-panel">切换右面板</div>
+        </div>
+      </span>
+      <span class="menu-item" id="menu-tools" data-menu="tools">工具
+        <div class="menu-dropdown" id="dropdown-tools">
+          <div class="menu-dropdown-item" data-action="tool-select">选择 <span class="menu-shortcut">V</span></div>
+          <div class="menu-dropdown-item" data-action="tool-point">点标记 <span class="menu-shortcut">P</span></div>
+          <div class="menu-dropdown-item" data-action="tool-rect">矩形 <span class="menu-shortcut">R</span></div>
+          <div class="menu-dropdown-item" data-action="tool-line">线段 <span class="menu-shortcut">L</span></div>
+          <div class="menu-dropdown-item" data-action="tool-circle">圆 <span class="menu-shortcut">C</span></div>
+          <div class="menu-dropdown-item" data-action="tool-pan">平移 <span class="menu-shortcut">H</span></div>
+        </div>
+      </span>
+      <span class="menu-item" id="menu-help" data-menu="help">帮助
+        <div class="menu-dropdown" id="dropdown-help">
+          <div class="menu-dropdown-item" data-action="show-shortcuts">快捷键</div>
+          <div class="menu-dropdown-item" data-action="show-about">关于</div>
+        </div>
+      </span>
+      <span class="menu-tool-indicator" id="menu-tool-indicator">
+        <span class="tool-indicator-icon" id="tool-indicator-icon">↖</span>
+        <span id="tool-indicator-name">选择</span>
+      </span>
+    </div>
+    <div id="workspace">
+      <div id="left-panel" style="position:relative;">
+        <button class="panel-toggle" style="position:absolute;bottom:8px;right:8px;z-index:10;font-size:11px;opacity:0.4;" onclick="togglePanel('left-panel')" title="折叠面板">◂</button>
+        <div id="layer-panel">
+          <div class="panel-header">
+            <span>图层管理</span>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button class="btn-sm" id="btn-add-layer" title="打开图片/叠加图层">+</button>
+            </div>
+          </div>
+          <div class="panel-content" id="layer-list"></div>
+        </div>
+        <div id="annotation-list-panel">
+          <div class="panel-header">
+            <span>标注列表</span>
+          </div>
+          <div class="panel-content" id="annotation-list"></div>
+        </div>
+      </div>
+      <div id="canvas-area">
+        <button class="panel-expand-btn left" id="left-panel-expand" onclick="togglePanel('left-panel')">▸</button>
+        <button class="panel-expand-btn right" id="right-panel-expand" onclick="togglePanel('right-panel')">◂</button>
+        <div id="canvas-container">
+          <canvas id="image-canvas"></canvas>
+          <svg id="annotation-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div id="empty-state">
+            <div class="empty-state-icon">📁</div>
+            <div class="empty-state-text">拖拽图片到此处<br>或点击选择文件</div>
+            <div class="empty-state-hint">支持 JPG、PNG、GIF、WebP 等格式</div>
+          </div>
+        </div>
+      </div>
+      <div id="right-panel" style="position:relative;">
+        <button class="panel-toggle" style="position:absolute;bottom:8px;right:8px;z-index:10;font-size:11px;opacity:0.4;" onclick="togglePanel('right-panel')" title="折叠面板">▸</button>
+        <div id="property-panel">
+          <div class="panel-header">
+            <span>属性</span>
+          </div>
+          <div class="panel-content" id="property-content">
+          </div>
+        </div>
+        <div id="input-panel">
+          <div class="panel-header">
+            <span>反向输入</span>
+          </div>
+          <div class="panel-content" id="input-content">
+            <div class="input-form-group">
+              <div class="input-row">
+                <label>类型</label>
+                <select id="ri-type">
+                  <option value="point">点标记</option>
+                  <option value="rect">矩形</option>
+                  <option value="rect-diag">矩形(对角线)</option>
+                  <option value="line">线段</option>
+                  <option value="circle">圆</option>
+                </select>
+              </div>
+            </div>
+            <div class="input-form-group" id="ri-fields">
+            </div>
+            <div class="input-form-group">
+              <div class="input-row" style="flex-direction:column;align-items:stretch;">
+                <label style="margin-bottom:4px;">批量输入</label>
+                <textarea id="ri-array" rows="2" placeholder="如: [10,20,80,60] 或 10,20,80,60" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:6px 8px;font-size:12px;font-family:monospace;outline:none;resize:vertical;width:100%;user-select:text;-webkit-user-select:text;"></textarea>
+                <span id="ri-array-hint" style="font-size:10px;color:var(--text-muted);margin-top:2px;">支持逗号或空格分隔</span>
+              </div>
+            </div>
+            <div class="input-actions">
+              <button id="btn-add-annotation">添加</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="statusbar">
+      <span class="status-item" id="status-tool">工具: 选择</span>
+      <span class="status-spacer"></span>
+      <span class="status-item" id="status-coords">坐标: -</span>
+      <span class="status-item" id="status-zoom">缩放: 100%</span>
+      <span class="status-item" id="status-image-size">图片: -</span>
+    </div>
+  </div>
+  <div class="modal-overlay hidden" id="shortcuts-modal" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="modal">
+      <button class="modal-close" onclick="this.closest('.modal-overlay').classList.add('hidden')">×</button>
+      <h2>快捷键</h2>
+      <table class="shortcut-table">
+        <tr><td>选择工具</td><td>V</td></tr>
+        <tr><td>点标记</td><td>P</td></tr>
+        <tr><td>矩形</td><td>R</td></tr>
+        <tr><td>线段</td><td>L</td></tr>
+        <tr><td>圆</td><td>C</td></tr>
+        <tr><td>平移</td><td>H / Space+拖拽</td></tr>
+        <tr><td>撤销</td><td>Ctrl+Z</td></tr>
+        <tr><td>重做</td><td>Ctrl+Shift+Z / Ctrl+Y</td></tr>
+        <tr><td>删除选中</td><td>Delete / Backspace</td></tr>
+        <tr><td>放大</td><td>+ / 滚轮上</td></tr>
+        <tr><td>缩小</td><td>− / 滚轮下</td></tr>
+        <tr><td>适配画布</td><td>Ctrl+0</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="modal-overlay hidden" id="about-modal" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="modal">
+      <button class="modal-close" onclick="this.closest('.modal-overlay').classList.add('hidden')">×</button>
+      <h2>关于 imgMeasure</h2>
+      <p>工程测量标注工具 — 基于 Web 的图片标注工具。</p>
+      <p>支持点标记、矩形、线段、圆等标注类型，适用于工程测量场景。</p>
+    </div>
+  </div>
+  <script>
+    // App modules will be added here
+
+    class EventBus {
+      constructor() { this._listeners = {}; }
+      on(event, fn) {
+        (this._listeners[event] ||= []).push(fn);
+        return () => this.off(event, fn);
+      }
+      off(event, fn) {
+        this._listeners[event] = (this._listeners[event] || []).filter(f => f !== fn);
+      }
+      emit(event, ...args) {
+        (this._listeners[event] || []).forEach(fn => fn(...args));
+      }
+    }
+
+    class Action {
+      constructor(executeFn, undoFn) {
+        this.execute = executeFn;
+        this.undo = undoFn;
+      }
+    }
+
+    class StateManager {
+      constructor(bus) {
+        this.bus = bus;
+        this.state = {
+          layers: [],
+          activeLayerId: null,
+          activeTool: 'select',
+          viewport: { scale: 1, offsetX: 0, offsetY: 0 },
+          selectedId: null,
+          imageLoaded: false,
+          imageSize: { width: 0, height: 0 }
+        };
+        this._undoStack = [];
+        this._redoStack = [];
+      }
+      update(partial) {
+        Object.assign(this.state, partial);
+        this.bus.emit('state:changed', this.state);
+      }
+      execute(action) {
+        action.execute();
+        this._undoStack.push(action);
+        this._redoStack = [];
+      }
+      undo() {
+        const action = this._undoStack.pop();
+        if (action) { action.undo(); this._redoStack.push(action); this.bus.emit('state:changed', this.state); }
+      }
+      redo() {
+        const action = this._redoStack.pop();
+        if (action) { action.execute(); this._undoStack.push(action); this.bus.emit('state:changed', this.state); }
+      }
+    }
+
+    const bus = new EventBus();
+    const stateManager = new StateManager(bus);
+    const sm = stateManager;
+
+    class Viewport {
+      constructor(canvasEl, svgEl, stateManager, bus) {
+        this.canvas = canvasEl;
+        this.svg = svgEl;
+        this.ctx = canvasEl.getContext('2d');
+        this.sm = stateManager;
+        this.bus = bus;
+        this.images = new Map();
+        this._panStart = null;
+        this._bindEvents();
+        this._resize();
+        window.addEventListener('resize', () => this._resize());
+        new ResizeObserver(() => this._resize()).observe(canvasEl.parentElement);
+      }
+
+      _resize() {
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+        this.svg.setAttribute('width', rect.width);
+        this.svg.setAttribute('height', rect.height);
+        this.render();
+      }
+
+      _bindEvents() {
+        this.canvas.parentElement.addEventListener('wheel', e => this._onWheel(e), { passive: false });
+      }
+
+      _onWheel(e) {
+        e.preventDefault();
+        const vp = this.sm.state.viewport;
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const imgCoord = this.screenToImage(mx, my);
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const newScale = Math.max(0.1, Math.min(50, vp.scale * factor));
+        vp.offsetX = mx - imgCoord.x * newScale;
+        vp.offsetY = my - imgCoord.y * newScale;
+        vp.scale = newScale;
+        this.sm.update({ viewport: vp });
+        this.render();
+        this.bus.emit('viewport:changed', vp);
+      }
+
+      screenToImage(sx, sy) {
+        const vp = this.sm.state.viewport;
+        return { x: (sx - vp.offsetX) / vp.scale, y: (sy - vp.offsetY) / vp.scale };
+      }
+
+      imageToScreen(ix, iy) {
+        const vp = this.sm.state.viewport;
+        return { x: ix * vp.scale + vp.offsetX, y: iy * vp.scale + vp.offsetY };
+      }
+
+      fitToCanvas(imgWidth, imgHeight) {
+        const cw = this.canvas.width;
+        const ch = this.canvas.height;
+        const scale = Math.min(cw / imgWidth, ch / imgHeight) * 0.9;
+        const vp = this.sm.state.viewport;
+        vp.scale = scale;
+        vp.offsetX = (cw - imgWidth * scale) / 2;
+        vp.offsetY = (ch - imgHeight * scale) / 2;
+        this.sm.update({ viewport: vp });
+        this.render();
+        this.bus.emit('viewport:changed', vp);
+      }
+
+      render() {
+        const ctx = this.ctx;
+        const vp = this.sm.state.viewport;
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this._drawCheckerboard();
+        for (const layer of this.sm.state.layers) {
+          if (!layer.visible) continue;
+          const img = this.images.get(layer.id);
+          if (!img) continue;
+          ctx.save();
+          ctx.globalAlpha = layer.opacity;
+          ctx.translate(vp.offsetX, vp.offsetY);
+          ctx.scale(vp.scale, vp.scale);
+          ctx.drawImage(img, 0, 0);
+          ctx.restore();
+        }
+      }
+
+      _drawCheckerboard() {
+        const size = 16;
+        const cols = Math.ceil(this.canvas.width / size);
+        const rows = Math.ceil(this.canvas.height / size);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            this.ctx.fillStyle = (r + c) % 2 === 0 ? '#1a1a2e' : '#16162a';
+            this.ctx.fillRect(c * size, r * size, size, size);
+          }
+        }
+      }
+
+      panStart(sx, sy) {
+        this._panStart = { x: sx, y: sy, ox: this.sm.state.viewport.offsetX, oy: this.sm.state.viewport.offsetY };
+      }
+
+      panMove(sx, sy) {
+        if (!this._panStart) return;
+        const s = this._panStart;
+        const vp = this.sm.state.viewport;
+        vp.offsetX = s.ox + (sx - s.x);
+        vp.offsetY = s.oy + (sy - s.y);
+        this.sm.update({ viewport: vp });
+        this.render();
+        this.bus.emit('viewport:changed', vp);
+      }
+
+      panEnd() { this._panStart = null; }
+
+      addImage(layerId, img) { this.images.set(layerId, img); this.render(); }
+      removeImage(layerId) { this.images.delete(layerId); this.render(); }
+    }
+
+    const viewport = new Viewport(
+      document.getElementById('image-canvas'),
+      document.getElementById('annotation-svg'),
+      stateManager,
+      bus
+    );
+
+    class LayerManager {
+      constructor(stateManager, bus, viewport) {
+        this.sm = stateManager;
+        this.bus = bus;
+        this.viewport = viewport;
+      }
+
+      _genId() {
+        return 'layer_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      }
+
+      addImageLayer(name, img) {
+        const id = this._genId();
+        const layer = {
+          id, name, type: 'image', visible: true, opacity: 1, locked: false,
+          order: this.sm.state.layers.length, annotations: []
+        };
+        this.sm.state.layers.push(layer);
+        this.viewport.addImage(id, img);
+        this.sm.update({
+          layers: this.sm.state.layers, activeLayerId: id,
+          imageLoaded: true, imageSize: { width: img.naturalWidth, height: img.naturalHeight }
+        });
+        this.bus.emit('layer:added', layer);
+        return layer;
+      }
+
+      addAnnotationLayer(name) {
+        const id = this._genId();
+        const layer = {
+          id, name, type: 'annotation', visible: true, opacity: 1, locked: false,
+          order: this.sm.state.layers.length, annotations: []
+        };
+        this.sm.state.layers.push(layer);
+        this.sm.update({ layers: this.sm.state.layers, activeLayerId: id });
+        this.bus.emit('layer:added', layer);
+        return layer;
+      }
+
+      removeLayer(id) {
+        const idx = this.sm.state.layers.findIndex(l => l.id === id);
+        if (idx === -1) return;
+        const layer = this.sm.state.layers[idx];
+        if (layer.type === 'image') this.viewport.removeImage(id);
+        this.sm.state.layers.splice(idx, 1);
+        this.sm.update({ layers: this.sm.state.layers });
+        this.bus.emit('layer:removed', id);
+      }
+
+      setOpacity(id, opacity) {
+        const layer = this.sm.state.layers.find(l => l.id === id);
+        if (layer) {
+          layer.opacity = opacity;
+          this.viewport.render();
+          this.bus.emit('layer:updated', layer);
+        }
+      }
+
+      toggleVisibility(id) {
+        const layer = this.sm.state.layers.find(l => l.id === id);
+        if (layer) {
+          layer.visible = !layer.visible;
+          this.viewport.render();
+          this.bus.emit('layer:updated', layer);
+        }
+      }
+
+      moveLayer(id, newOrder) {
+        const layers = this.sm.state.layers;
+        const idx = layers.findIndex(l => l.id === id);
+        if (idx === -1) return;
+        const [layer] = layers.splice(idx, 1);
+        layers.splice(newOrder, 0, layer);
+        layers.forEach((l, i) => l.order = i);
+        this.viewport.render();
+        this.bus.emit('layer:reordered');
+      }
+
+      getActiveLayer() {
+        return this.sm.state.layers.find(l => l.id === this.sm.state.activeLayerId);
+      }
+    }
+
+    const layerManager = new LayerManager(stateManager, bus, viewport);
+
+    function handleFileUpload(file) {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const layer = layerManager.addImageLayer(file.name, img);
+          if (sm.state.layers.filter(l => l.type === 'image').length === 1) {
+            viewport.fitToCanvas(img.naturalWidth, img.naturalHeight);
+            layerManager.addAnnotationLayer('标注-1');
+          }
+          bus.emit('layers:changed');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.multiple = true;
+    fileInput.style.display = 'none';
+    document.body.appendChild(fileInput);
+    fileInput.addEventListener('change', (e) => {
+      Array.from(e.target.files).forEach(handleFileUpload);
+      fileInput.value = '';
+    });
+
+    const canvasArea = document.getElementById('canvas-area');
+    canvasArea.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    canvasArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      Array.from(e.dataTransfer.files).forEach(handleFileUpload);
+    });
+
+    let _annId = 0;
+    function createAnnotation(type, layerId, props) {
+      const colorMap = { point: '#3b82f6', rect: '#f59e0b', line: '#10b981', circle: '#8b5cf6' };
+      return {
+        id: 'ann_' + (++_annId), type, layerId,
+        label: `${type}-${_annId}`,
+        color: colorMap[type] || '#3b82f6',
+        selected: false,
+        ...props
+      };
+    }
+
+    class AnnotationRenderer {
+      constructor(svgEl, stateManager, bus, viewport) {
+        this.svg = svgEl;
+        this.sm = stateManager;
+        this.bus = bus;
+        this.viewport = viewport;
+        this._elements = new Map();
+        this._addDefs();
+        this.bus.on('viewport:changed', () => this.renderAll());
+        this.bus.on('annotation:added', (ann) => this.renderOne(ann));
+        this.bus.on('annotation:removed', (id) => this.removeOne(id));
+        this.bus.on('annotation:updated', (ann) => { this.removeOne(ann.id); this.renderOne(ann); });
+        this.bus.on('annotation:selected', () => this.renderAll());
+        this.bus.on('layer:updated', () => this.renderAll());
+        this.bus.on('layer:removed', () => this.renderAll());
+        this.bus.on('layers:changed', () => this.renderAll());
+      }
+
+      _addDefs() {
+        const defs = this._svgEl('defs');
+        this.svg.appendChild(defs);
+      }
+
+      _svgEl(tag, attrs = {}) {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          el.setAttribute(k, v);
+        }
+        return el;
+      }
+
+      renderAll() {
+        for (const el of this._elements.values()) el.remove();
+        this._elements.clear();
+        for (const layer of this.sm.state.layers) {
+          if (!layer.visible) continue;
+          for (const ann of layer.annotations) {
+            this.renderOne(ann);
+          }
+        }
+      }
+
+      renderOne(ann) {
+        const existing = this._elements.get(ann.id);
+        if (existing) existing.remove();
+        const vp = this.sm.state.viewport;
+        const g = this._svgEl('g', {
+          'data-ann-id': ann.id,
+          'pointer-events': 'all',
+          style: 'cursor: pointer;'
+        });
+        switch (ann.type) {
+          case 'point': this._renderPoint(g, ann, vp); break;
+          case 'rect': this._renderRect(g, ann, vp); break;
+          case 'line': this._renderLine(g, ann, vp); break;
+          case 'circle': this._renderCircle(g, ann, vp); break;
+        }
+        g.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.bus.emit('annotation:click', ann.id, e);
+        });
+        this.svg.appendChild(g);
+        this._elements.set(ann.id, g);
+      }
+
+      removeOne(id) {
+        const el = this._elements.get(id);
+        if (el) { el.remove(); this._elements.delete(id); }
+      }
+
+      _renderPoint(g, ann, vp) {
+        const sx = ann.x * vp.scale + vp.offsetX;
+        const sy = ann.y * vp.scale + vp.offsetY;
+        const r = 6;
+        g.appendChild(this._svgEl('circle', {
+          cx: sx, cy: sy, r,
+          fill: ann.color, stroke: '#fff', 'stroke-width': 1.5, opacity: 0.9
+        }));
+        const text = this._svgEl('text', {
+          x: sx + r + 4, y: sy + 4,
+          fill: '#fff', 'font-size': 11, 'font-family': 'monospace',
+          'pointer-events': 'none'
+        });
+        text.textContent = `(${Math.round(ann.x)}, ${Math.round(ann.y)})`;
+        g.appendChild(text);
+        if (ann.selected) {
+          g.appendChild(this._svgEl('circle', {
+            cx: sx, cy: sy, r: r + 4,
+            fill: 'none', stroke: '#3b82f6', 'stroke-width': 2, 'stroke-dasharray': '3,3'
+          }));
+        }
+      }
+
+      _renderRect(g, ann, vp) {
+        const x1 = ann.x * vp.scale + vp.offsetX;
+        const y1 = ann.y * vp.scale + vp.offsetY;
+        const w = ann.width * vp.scale;
+        const h = ann.height * vp.scale;
+        g.appendChild(this._svgEl('rect', {
+          x: x1, y: y1, width: w, height: h,
+          fill: ann.color, 'fill-opacity': 0.12,
+          stroke: ann.color, 'stroke-width': ann.selected ? 2 : 1.5
+        }));
+        const label = this._svgEl('text', {
+          x: x1 + w / 2, y: y1 - 6,
+          fill: '#fff', 'font-size': 11, 'font-family': 'monospace',
+          'text-anchor': 'middle', 'pointer-events': 'none'
+        });
+        label.textContent = `${Math.round(ann.width)} × ${Math.round(ann.height)}`;
+        g.appendChild(label);
+        if (ann.selected) {
+          this._renderRectHandles(g, { x: x1, y: y1 }, { x: x1 + w, y: y1 + h }, ann);
+        }
+      }
+
+      _renderLine(g, ann, vp) {
+        const x1 = ann.x1 * vp.scale + vp.offsetX;
+        const y1 = ann.y1 * vp.scale + vp.offsetY;
+        const x2 = ann.x2 * vp.scale + vp.offsetX;
+        const y2 = ann.y2 * vp.scale + vp.offsetY;
+        g.appendChild(this._svgEl('line', {
+          x1, y1, x2, y2,
+          stroke: ann.color, 'stroke-width': ann.selected ? 2.5 : 1.5
+        }));
+        for (const [px, py] of [[x1, y1], [x2, y2]]) {
+          g.appendChild(this._svgEl('circle', {
+            cx: px, cy: py, r: 4,
+            fill: ann.color, stroke: '#fff', 'stroke-width': 1, 'pointer-events': 'none'
+          }));
+        }
+        const dx = ann.x2 - ann.x1, dy = ann.y2 - ann.y1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const text = this._svgEl('text', {
+          x: mx, y: my - 8,
+          fill: '#fff', 'font-size': 11, 'font-family': 'monospace',
+          'text-anchor': 'middle', 'pointer-events': 'none'
+        });
+        text.textContent = `${dist.toFixed(1)}px`;
+        g.appendChild(text);
+      }
+
+      _renderCircle(g, ann, vp) {
+        const cx = ann.cx * vp.scale + vp.offsetX;
+        const cy = ann.cy * vp.scale + vp.offsetY;
+        const r = ann.radius * vp.scale;
+        g.appendChild(this._svgEl('circle', {
+          cx, cy, r,
+          fill: ann.color, 'fill-opacity': 0.1,
+          stroke: ann.color, 'stroke-width': ann.selected ? 2.5 : 1.5
+        }));
+        g.appendChild(this._svgEl('circle', {
+          cx, cy, r: 3, fill: ann.color, 'pointer-events': 'none'
+        }));
+        const area = Math.PI * ann.radius * ann.radius;
+        const text = this._svgEl('text', {
+          x: cx, y: cy - r - 8,
+          fill: '#fff', 'font-size': 11, 'font-family': 'monospace',
+          'text-anchor': 'middle', 'pointer-events': 'none'
+        });
+        text.textContent = `r=${ann.radius.toFixed(1)} A=${area.toFixed(0)}`;
+        g.appendChild(text);
+        if (ann.selected) {
+          g.appendChild(this._svgEl('circle', {
+            cx, cy, r: r + 4,
+            fill: 'none', stroke: '#3b82f6', 'stroke-width': 1.5, 'stroke-dasharray': '4,3'
+          }));
+          g.appendChild(this._svgEl('circle', {
+            cx: cx + r, cy, r: 5,
+            fill: '#fff', stroke: ann.color, 'stroke-width': 1.5, cursor: 'ew-resize'
+          }));
+        }
+      }
+
+      _renderRectHandles(g, tl, br, ann) {
+        const mx = (tl.x + br.x) / 2, my = (tl.y + br.y) / 2;
+        const handleTypes = ['tl', 'tc', 'tr', 'mr', 'br', 'bc', 'bl', 'ml'];
+        const handles = [
+          { x: tl.x, y: tl.y, cursor: 'nwse-resize' },
+          { x: mx, y: tl.y, cursor: 'ns-resize' },
+          { x: br.x, y: tl.y, cursor: 'nesw-resize' },
+          { x: br.x, y: my, cursor: 'ew-resize' },
+          { x: br.x, y: br.y, cursor: 'nwse-resize' },
+          { x: mx, y: br.y, cursor: 'ns-resize' },
+          { x: tl.x, y: br.y, cursor: 'nesw-resize' },
+          { x: tl.x, y: my, cursor: 'ew-resize' },
+        ];
+        for (let i = 0; i < handles.length; i++) {
+          const h = handles[i];
+          const ht = handleTypes[i];
+          const handleEl = this._svgEl('rect', {
+            x: h.x - 4, y: h.y - 4, width: 8, height: 8,
+            fill: '#fff', stroke: ann.color, 'stroke-width': 1.5,
+            cursor: h.cursor, rx: 1
+          });
+          handleEl.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            this.bus.emit('handle:drag-start', ann.id, ht, e);
+          });
+          g.appendChild(handleEl);
+        }
+      }
+    }
+
+    class ToolManager {
+      constructor(stateManager, bus, viewport, svgEl) {
+        this.sm = stateManager;
+        this.bus = bus;
+        this.viewport = viewport;
+        this.svgEl = svgEl;
+        this.container = svgEl.parentElement;
+        this.tools = {};
+        this.activeTool = null;
+        this._spaceDown = false;
+        this._panning = false;
+        this._bindMouse();
+      }
+
+      register(name, handler) {
+        this.tools[name] = handler;
+      }
+
+      setActive(name) {
+        if (this.activeTool && this.tools[this.activeTool]) {
+          const prev = this.tools[this.activeTool];
+          if (prev.deactivate) prev.deactivate();
+        }
+        this.activeTool = name;
+        this.sm.update({ activeTool: name });
+        this.bus.emit('tool:changed', name);
+        if (this.tools[name] && this.tools[name].activate) {
+          this.tools[name].activate();
+        }
+        const toolNames = { select: '选择', point: '点标记', rect: '矩形', line: '线段', circle: '圆', pan: '平移' };
+        document.getElementById('status-tool').textContent = '工具: ' + (toolNames[name] || name);
+      }
+
+      _bindMouse() {
+        this.container.addEventListener('mousedown', (e) => this._onMouseDown(e));
+        this.container.addEventListener('mousemove', (e) => this._onMouseMove(e));
+        this.container.addEventListener('mouseup', (e) => this._onMouseUp(e));
+        this.container.addEventListener('dblclick', (e) => this._onDblClick(e));
+      }
+
+      _getScreenCoords(e) {
+        const rect = this.container.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+
+      _onMouseDown(e) {
+        const coords = this._getScreenCoords(e);
+        if (e.button === 1) {
+          e.preventDefault();
+          this._panning = true;
+          this.viewport.panStart(coords.x, coords.y);
+          this.container.style.cursor = 'grabbing';
+          return;
+        }
+        if (e.button !== 0) return;
+        if (this._spaceDown || this.activeTool === 'pan') {
+          this._panning = true;
+          this.viewport.panStart(coords.x, coords.y);
+          this.container.style.cursor = 'grabbing';
+          return;
+        }
+        if (this.activeTool && this.tools[this.activeTool]) {
+          const handler = this.tools[this.activeTool];
+          if (handler.mousedown) handler.mousedown(e, coords);
+        }
+      }
+
+      _onMouseMove(e) {
+        const coords = this._getScreenCoords(e);
+        const imgCoord = this.viewport.screenToImage(coords.x, coords.y);
+        document.getElementById('status-coords').textContent =
+          `坐标: (${Math.round(imgCoord.x)}, ${Math.round(imgCoord.y)})`;
+        this.bus.emit('mouse:move', coords, imgCoord);
+        if (this._panning) {
+          this.viewport.panMove(coords.x, coords.y);
+          return;
+        }
+        if (this.activeTool && this.tools[this.activeTool]) {
+          const handler = this.tools[this.activeTool];
+          if (handler.mousemove) handler.mousemove(e, coords);
+        }
+      }
+
+      _onMouseUp(e) {
+        const coords = this._getScreenCoords(e);
+        if (this._panning) {
+          this._panning = false;
+          this.viewport.panEnd();
+          const cursors = { select: 'default', point: 'crosshair', rect: 'crosshair', line: 'crosshair', circle: 'crosshair', pan: 'grab' };
+          this.container.style.cursor = cursors[this.activeTool] || 'default';
+          return;
+        }
+        if (this.activeTool && this.tools[this.activeTool]) {
+          const handler = this.tools[this.activeTool];
+          if (handler.mouseup) handler.mouseup(e, coords);
+        }
+      }
+
+      _onDblClick(e) {
+        const coords = this._getScreenCoords(e);
+        if (this.activeTool && this.tools[this.activeTool]) {
+          const handler = this.tools[this.activeTool];
+          if (handler.dblclick) handler.dblclick(e, coords);
+        }
+      }
+
+      bindKeyboard() {
+        document.addEventListener('keydown', (e) => this._onKeyDown(e));
+        document.addEventListener('keyup', (e) => this._onKeyUp(e));
+      }
+
+      _onKeyDown(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.code === 'Space' && !this._spaceDown) {
+          e.preventDefault();
+          this._spaceDown = true;
+          this.container.style.cursor = 'grab';
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          this.sm.undo();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+          e.preventDefault();
+          this.sm.redo();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+          e.preventDefault();
+          this.sm.redo();
+          return;
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          this.bus.emit('annotation:delete-selected');
+          return;
+        }
+        if (e.key === '+' || e.key === '=') { this._zoomIn(); return; }
+        if (e.key === '-' || e.key === '_') { this._zoomOut(); return; }
+        if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+          e.preventDefault();
+          const imgSize = this.sm.state.imageSize;
+          if (imgSize.width && imgSize.height) {
+            this.viewport.fitToCanvas(imgSize.width, imgSize.height);
+          }
+          return;
+        }
+        switch (e.key.toLowerCase()) {
+          case 'v': this.setActive('select'); break;
+          case 'p': this.setActive('point'); break;
+          case 'r': this.setActive('rect'); break;
+          case 'l': this.setActive('line'); break;
+          case 'c': this.setActive('circle'); break;
+          case 'h': this.setActive('pan'); break;
+        }
+      }
+
+      _onKeyUp(e) {
+        if (e.code === 'Space') {
+          this._spaceDown = false;
+          this.container.style.cursor = '';
+        }
+      }
+
+      _zoomIn() {
+        const vp = this.sm.state.viewport;
+        const cx = this.viewport.canvas.width / 2;
+        const cy = this.viewport.canvas.height / 2;
+        const imgCoord = this.viewport.screenToImage(cx, cy);
+        const newScale = Math.min(50, vp.scale * 1.2);
+        vp.offsetX = cx - imgCoord.x * newScale;
+        vp.offsetY = cy - imgCoord.y * newScale;
+        vp.scale = newScale;
+        this.sm.update({ viewport: vp });
+        this.viewport.render();
+        this.bus.emit('viewport:changed', vp);
+      }
+
+      _zoomOut() {
+        const vp = this.sm.state.viewport;
+        const cx = this.viewport.canvas.width / 2;
+        const cy = this.viewport.canvas.height / 2;
+        const imgCoord = this.viewport.screenToImage(cx, cy);
+        const newScale = Math.max(0.1, vp.scale / 1.2);
+        vp.offsetX = cx - imgCoord.x * newScale;
+        vp.offsetY = cy - imgCoord.y * newScale;
+        vp.scale = newScale;
+        this.sm.update({ viewport: vp });
+        this.viewport.render();
+        this.bus.emit('viewport:changed', vp);
+      }
+    }
+
+    const renderer = new AnnotationRenderer(
+      document.getElementById('annotation-svg'), stateManager, bus, viewport
+    );
+    const toolManager = new ToolManager(stateManager, bus, viewport, document.getElementById('annotation-svg'));
+    toolManager.bindKeyboard();
+
+    function findAnnotation(id) {
+      if (!id) return null;
+      for (const layer of sm.state.layers) {
+        const ann = (layer.annotations || []).find(a => a.id === id);
+        if (ann) return ann;
+      }
+      return null;
+    }
+
+    const pointTool = {
+      mousedown(e, pos) {
+        const imgPos = viewport.screenToImage(pos.x, pos.y);
+        const layer = layerManager.getActiveLayer();
+        if (!layer || layer.type === 'image') return;
+        const ann = createAnnotation('point', layer.id, { x: imgPos.x, y: imgPos.y });
+        const prevId = sm.state.selectedId;
+        sm.execute(new Action(
+          () => {
+            const prev = findAnnotation(prevId);
+            if (prev) prev.selected = false;
+            layer.annotations.push(ann);
+            ann.selected = true;
+            sm.state.selectedId = ann.id;
+            bus.emit('annotation:added', ann);
+            bus.emit('annotation:selected', ann.id);
+            renderer.renderAll();
+          },
+          () => {
+            layer.annotations = layer.annotations.filter(a => a.id !== ann.id);
+            ann.selected = false;
+            const prev = findAnnotation(prevId);
+            if (prev) { prev.selected = true; sm.state.selectedId = prevId; }
+            else { sm.state.selectedId = null; }
+            bus.emit('annotation:removed', ann.id);
+            bus.emit('annotation:selected', sm.state.selectedId);
+            renderer.renderAll();
+          }
+        ));
+      }
+    };
+    toolManager.register('point', pointTool);
+
+    const rectTool = {
+      _start: null,
+      _previewEl: null,
+
+      mousedown(e, pos) {
+        const imgPos = viewport.screenToImage(pos.x, pos.y);
+        this._start = imgPos;
+        this._previewEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        this._previewEl.setAttribute('fill', 'rgba(245, 158, 11, 0.15)');
+        this._previewEl.setAttribute('stroke', '#f59e0b');
+        this._previewEl.setAttribute('stroke-width', '2');
+        this._previewEl.setAttribute('stroke-dasharray', '6,3');
+        this._previewEl.style.pointerEvents = 'none';
+        document.getElementById('annotation-svg').appendChild(this._previewEl);
+      },
+
+      mousemove(e, pos) {
+        if (!this._start || !this._previewEl) return;
+        const imgPos = viewport.screenToImage(pos.x, pos.y);
+        const s1 = viewport.imageToScreen(this._start.x, this._start.y);
+        const s2 = viewport.imageToScreen(imgPos.x, imgPos.y);
+        const x = Math.min(s1.x, s2.x), y = Math.min(s1.y, s2.y);
+        const w = Math.abs(s2.x - s1.x), h = Math.abs(s2.y - s1.y);
+        this._previewEl.setAttribute('x', x);
+        this._previewEl.setAttribute('y', y);
+        this._previewEl.setAttribute('width', w);
+        this._previewEl.setAttribute('height', h);
+      },
+
+      mouseup(e, pos) {
+        if (!this._start) return;
+        if (this._previewEl) { this._previewEl.remove(); this._previewEl = null; }
+        const imgPos = viewport.screenToImage(pos.x, pos.y);
+        const s = this._start;
+        const x = Math.min(s.x, imgPos.x), y = Math.min(s.y, imgPos.y);
+        const w = Math.abs(imgPos.x - s.x), h = Math.abs(imgPos.y - s.y);
+        this._start = null;
+        if (w < 3 && h < 3) return;
+
+        const layer = layerManager.getActiveLayer();
+        if (!layer || layer.type === 'image') return;
+
+        const ann = createAnnotation('rect', layer.id, { x, y, width: w, height: h });
+        const prevId = sm.state.selectedId;
+        const prevAnn = findAnnotation(prevId);
+        layer.annotations.push(ann);
+
+        if (prevAnn) prevAnn.selected = false;
+        ann.selected = true;
+        sm.state.selectedId = ann.id;
+
+        sm.execute(new Action(
+          () => {
+            if (!layer.annotations.includes(ann)) layer.annotations.push(ann);
+            ann.selected = true; sm.state.selectedId = ann.id;
+            bus.emit('annotation:added', ann);
+            bus.emit('annotation:selected', ann.id);
+            renderer.renderAll();
+          },
+          () => {
+            layer.annotations = layer.annotations.filter(a => a.id !== ann.id);
+            if (prevAnn) { prevAnn.selected = true; sm.state.selectedId = prevId; }
+            else sm.state.selectedId = null;
+            bus.emit('annotation:removed', ann.id);
+            bus.emit('annotation:selected', sm.state.selectedId);
+            renderer.renderAll();
+          }
+        ));
+      }
+    };
+
+    toolManager.register('rect', rectTool);
+
+    const lineTool = {
+      _start: null,
+      _previewEl: null,
+
+      mousedown(e, pos) {
+        const imgPos = viewport.screenToImage(pos.x, pos.y);
+        if (!this._start) {
+          this._start = imgPos;
+          this._previewEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          this._previewEl.style.pointerEvents = 'none';
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('stroke', '#10b981');
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('stroke-dasharray', '6,3');
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('r', '4');
+          circle.setAttribute('fill', '#10b981');
+          const sp = viewport.imageToScreen(imgPos.x, imgPos.y);
+          circle.setAttribute('cx', sp.x);
+          circle.setAttribute('cy', sp.y);
+          line.setAttribute('x1', sp.x); line.setAttribute('y1', sp.y);
+          line.setAttribute('x2', sp.x); line.setAttribute('y2', sp.y);
+          this._previewEl.appendChild(line);
+          this._previewEl.appendChild(circle);
+          this._previewLine = line;
+          document.getElementById('annotation-svg').appendChild(this._previewEl);
+        } else {
+          if (this._previewEl) { this._previewEl.remove(); this._previewEl = null; }
+          const layer = layerManager.getActiveLayer();
+          if (!layer || layer.type === 'image') { this._start = null; return; }
+          const ann = createAnnotation('line', layer.id, {
+            x1: this._start.x, y1: this._start.y,
+            x2: imgPos.x, y2: imgPos.y
+          });
+          const prevId = sm.state.selectedId;
+          const prevAnn = findAnnotation(prevId);
+          layer.annotations.push(ann);
+          if (prevAnn) prevAnn.selected = false;
+          ann.selected = true;
+          sm.state.selectedId = ann.id;
+          this._start = null;
+          sm.execute(new Action(
+            () => {
+              if (!layer.annotations.includes(ann)) layer.annotations.push(ann);
+              ann.selected = true; sm.state.selectedId = ann.id;
+              bus.emit('annotation:added', ann);
+              bus.emit('annotation:selected', ann.id);
+              renderer.renderAll();
+            },
+            () => {
+              layer.annotations = layer.annotations.filter(a => a.id !== ann.id);
+              if (prevAnn) { prevAnn.selected = true; sm.state.selectedId = prevId; }
+              else sm.state.selectedId = null;
+              bus.emit('annotation:removed', ann.id);
+              bus.emit('annotation:selected', sm.state.selectedId);
+              renderer.renderAll();
+            }
+          ));
+        }
+      },
+
+      mousemove(e, pos) {
+        if (!this._start || !this._previewLine) return;
+        const sp = viewport.imageToScreen(this._start.x, this._start.y);
+        this._previewLine.setAttribute('x1', sp.x);
+        this._previewLine.setAttribute('y1', sp.y);
+        this._previewLine.setAttribute('x2', pos.x);
+        this._previewLine.setAttribute('y2', pos.y);
+      }
+    };
+
+    toolManager.register('line', lineTool);
+
+    const circleTool = {
+      _center: null,
+      _previewEl: null,
+
+      mousedown(e, pos) {
+        const imgPos = viewport.screenToImage(pos.x, pos.y);
+        if (!this._center) {
+          this._center = imgPos;
+          this._previewEl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          this._previewEl.style.pointerEvents = 'none';
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('fill', 'rgba(139, 92, 246, 0.1)');
+          circle.setAttribute('stroke', '#8b5cf6');
+          circle.setAttribute('stroke-width', '2');
+          circle.setAttribute('stroke-dasharray', '6,3');
+          const sp = viewport.imageToScreen(imgPos.x, imgPos.y);
+          circle.setAttribute('cx', sp.x);
+          circle.setAttribute('cy', sp.y);
+          circle.setAttribute('r', '0');
+          this._previewCircle = circle;
+          this._previewEl.appendChild(circle);
+          document.getElementById('annotation-svg').appendChild(this._previewEl);
+        } else {
+          if (this._previewEl) { this._previewEl.remove(); this._previewEl = null; }
+          const dx = imgPos.x - this._center.x;
+          const dy = imgPos.y - this._center.y;
+          const radius = Math.sqrt(dx * dx + dy * dy);
+          if (radius < 2) { this._center = null; return; }
+          const layer = layerManager.getActiveLayer();
+          if (!layer || layer.type === 'image') { this._center = null; return; }
+          const ann = createAnnotation('circle', layer.id, {
+            cx: this._center.x, cy: this._center.y, radius
+          });
+          const prevId = sm.state.selectedId;
+          const prevAnn = findAnnotation(prevId);
+          layer.annotations.push(ann);
+          if (prevAnn) prevAnn.selected = false;
+          ann.selected = true;
+          sm.state.selectedId = ann.id;
+          this._center = null;
+          sm.execute(new Action(
+            () => {
+              if (!layer.annotations.includes(ann)) layer.annotations.push(ann);
+              ann.selected = true; sm.state.selectedId = ann.id;
+              bus.emit('annotation:added', ann);
+              bus.emit('annotation:selected', ann.id);
+              renderer.renderAll();
+            },
+            () => {
+              layer.annotations = layer.annotations.filter(a => a.id !== ann.id);
+              if (prevAnn) { prevAnn.selected = true; sm.state.selectedId = prevId; }
+              else sm.state.selectedId = null;
+              bus.emit('annotation:removed', ann.id);
+              bus.emit('annotation:selected', sm.state.selectedId);
+              renderer.renderAll();
+            }
+          ));
+        }
+      },
+
+      mousemove(e, pos) {
+        if (!this._center || !this._previewCircle) return;
+        const sp = viewport.imageToScreen(this._center.x, this._center.y);
+        this._previewCircle.setAttribute('cx', sp.x);
+        this._previewCircle.setAttribute('cy', sp.y);
+        const dx = pos.x - sp.x;
+        const dy = pos.y - sp.y;
+        this._previewCircle.setAttribute('r', Math.max(1, Math.sqrt(dx * dx + dy * dy)));
+      }
+    };
+
+    toolManager.register('circle', circleTool);
+
+    let _handleDrag = null;
+
+    bus.on('handle:drag-start', (annId, handleType, e) => {
+      const ann = findAnnotation(annId);
+      if (!ann || ann.type !== 'rect') return;
+      const origProps = { x: ann.x, y: ann.y, width: ann.width, height: ann.height };
+      const startPos = { sx: e.clientX, sy: e.clientY };
+      _handleDrag = { ann, handleType, origProps, startPos };
+      let moved = false;
+
+      const onMove = (e2) => {
+        if (!_handleDrag) return;
+        const dx = (e2.clientX - startPos.sx) / sm.state.viewport.scale;
+        const dy = (e2.clientY - startPos.sy) / sm.state.viewport.scale;
+        const o = origProps;
+        let { x, y, width, height } = o;
+
+        switch (handleType) {
+          case 'tl': x += dx; y += dy; width -= dx; height -= dy; break;
+          case 'tc': y += dy; height -= dy; break;
+          case 'tr': y += dy; width += dx; height -= dy; break;
+          case 'mr': width += dx; break;
+          case 'br': width += dx; height += dy; break;
+          case 'bc': height += dy; break;
+          case 'bl': x += dx; width -= dx; height += dy; break;
+          case 'ml': x += dx; width -= dx; break;
+        }
+
+        if (width < 0) { x += width; width = -width; }
+        if (height < 0) { y += height; height = -height; }
+
+        ann.x = x; ann.y = y; ann.width = width; ann.height = height;
+        moved = true;
+        renderer.renderAll();
+        bus.emit('annotation:updated', ann);
+      };
+
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        _handleDrag = null;
+        if (moved) {
+          const finalProps = { x: ann.x, y: ann.y, width: ann.width, height: ann.height };
+          const restoreProps = { ...origProps };
+          sm.execute(new Action(
+            () => {
+              Object.assign(ann, finalProps);
+              renderer.renderAll();
+              bus.emit('annotation:updated', ann);
+            },
+            () => {
+              Object.assign(ann, restoreProps);
+              renderer.renderAll();
+              bus.emit('annotation:updated', ann);
+            }
+          ));
+        }
+      };
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    const selectTool = {
+      mousedown(e, pos) {
+        const current = findAnnotation(sm.state.selectedId);
+        if (current) {
+          current.selected = false;
+          sm.state.selectedId = null;
+          renderer.renderAll();
+          bus.emit('annotation:selected', null);
+        }
+      }
+    };
+    toolManager.register('select', selectTool);
+
+    toolManager.register('pan', {});
+
+    toolManager.setActive('select');
+
+    bus.on('annotation:click', (annId, e) => {
+      const current = findAnnotation(sm.state.selectedId);
+      if (current) current.selected = false;
+      const ann = findAnnotation(annId);
+      if (ann) {
+        ann.selected = true;
+        sm.state.selectedId = annId;
+      } else {
+        sm.state.selectedId = null;
+      }
+      renderer.renderAll();
+      bus.emit('annotation:selected', sm.state.selectedId);
+    });
+
+    bus.on('annotation:click', (annId, e) => {
+      const ann = findAnnotation(annId);
+      if (!ann) return;
+      const origProps = { ...ann };
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let moved = false;
+
+      const onMove = (e2) => {
+        const dx = (e2.clientX - startX) / sm.state.viewport.scale;
+        const dy = (e2.clientY - startY) / sm.state.viewport.scale;
+        if (!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+        moved = true;
+        switch (ann.type) {
+          case 'point': ann.x = origProps.x + dx; ann.y = origProps.y + dy; break;
+          case 'rect': ann.x = origProps.x + dx; ann.y = origProps.y + dy; break;
+          case 'line': ann.x1 = origProps.x1 + dx; ann.y1 = origProps.y1 + dy; ann.x2 = origProps.x2 + dx; ann.y2 = origProps.y2 + dy; break;
+          case 'circle': ann.cx = origProps.cx + dx; ann.cy = origProps.cy + dy; break;
+        }
+        renderer.renderAll();
+        bus.emit('annotation:updated', ann);
+      };
+
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        if (moved) {
+          const finalProps = { ...ann };
+          const restoreProps = { ...origProps };
+          sm.execute(new Action(
+            () => {
+              Object.assign(ann, finalProps);
+              renderer.renderAll();
+              bus.emit('annotation:updated', ann);
+            },
+            () => {
+              Object.assign(ann, restoreProps);
+              renderer.renderAll();
+              bus.emit('annotation:updated', ann);
+            }
+          ));
+        }
+      };
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    bus.on('annotation:delete-selected', () => {
+      const ann = findAnnotation(sm.state.selectedId);
+      if (!ann) return;
+      const layer = sm.state.layers.find(l => l.id === ann.layerId);
+      if (!layer) return;
+      const annCopy = { ...ann };
+      sm.execute(new Action(
+        () => {
+          layer.annotations = layer.annotations.filter(a => a.id !== annCopy.id);
+          ann.selected = false;
+          sm.state.selectedId = null;
+          bus.emit('annotation:removed', annCopy.id);
+          renderer.renderAll();
+        },
+        () => {
+          layer.annotations.push(ann);
+          ann.selected = true;
+          sm.state.selectedId = ann.id;
+          bus.emit('annotation:added', ann);
+          renderer.renderAll();
+        }
+      ));
+    });
+
+    const _typeLabels = { point: '点', rect: '矩形', line: '线段', circle: '圆' };
+
+    const _propDefs = {
+      point: [
+        { prop: 'x', label: 'X' },
+        { prop: 'y', label: 'Y' }
+      ],
+      rect: [
+        { prop: 'x', label: 'X' },
+        { prop: 'y', label: 'Y' },
+        { prop: 'width', label: 'W' },
+        { prop: 'height', label: 'H' }
+      ],
+      line: [
+        { prop: 'x1', label: 'X1' },
+        { prop: 'y1', label: 'Y1' },
+        { prop: 'x2', label: 'X2' },
+        { prop: 'y2', label: 'Y2' },
+        { prop: '_dist', label: '距离', readonly: true }
+      ],
+      circle: [
+        { prop: 'cx', label: 'CX' },
+        { prop: 'cy', label: 'CY' },
+        { prop: 'radius', label: 'R' },
+        { prop: '_area', label: '面积', readonly: true },
+        { prop: '_perim', label: '周长', readonly: true }
+      ]
+    };
+
+    function _computedProp(ann, prop) {
+      if (prop === '_dist') {
+        const dx = ann.x2 - ann.x1, dy = ann.y2 - ann.y1;
+        return Math.sqrt(dx * dx + dy * dy).toFixed(2);
+      }
+      if (prop === '_area') return (Math.PI * ann.radius * ann.radius).toFixed(2);
+      if (prop === '_perim') return (2 * Math.PI * ann.radius).toFixed(2);
+      return ann[prop];
+    }
+
+    function renderPropertyPanel() {
+      const container = document.getElementById('property-content');
+      const ann = findAnnotation(sm.state.selectedId);
+
+      if (!ann) {
+        container.innerHTML = '<div class="prop-empty">未选中标注</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      const typeDiv = document.createElement('div');
+      typeDiv.className = 'prop-type-label';
+      typeDiv.textContent = _typeLabels[ann.type] || ann.type;
+      container.appendChild(typeDiv);
+
+      const defs = _propDefs[ann.type] || [];
+      for (const def of defs) {
+        const row = document.createElement('div');
+        row.className = 'prop-row';
+        const label = document.createElement('span');
+        label.className = 'prop-label';
+        label.textContent = def.label;
+        row.appendChild(label);
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = 'any';
+        if (def.readonly) {
+          input.className = 'prop-readonly';
+          input.readOnly = true;
+          input.value = _computedProp(ann, def.prop);
+        } else {
+          input.className = 'prop-input';
+          input.value = Math.round((ann[def.prop] + Number.EPSILON) * 100) / 100;
+          input.addEventListener('change', () => {
+            const val = parseFloat(input.value);
+            if (isNaN(val)) { input.value = ann[def.prop]; return; }
+            ann[def.prop] = val;
+            renderer.renderAll();
+            bus.emit('annotation:updated', ann);
+          });
+        }
+        row.appendChild(input);
+        container.appendChild(row);
+      }
+
+      if (ann.type === 'rect') {
+        const btnRow = document.createElement('div');
+        btnRow.className = 'prop-row';
+        btnRow.style.justifyContent = 'flex-end';
+        btnRow.style.marginTop = '8px';
+        const exportBtn = document.createElement('button');
+        exportBtn.textContent = '导出裁切区域';
+        exportBtn.style.cssText = 'font-size:12px;padding:4px 12px;';
+        exportBtn.addEventListener('click', () => _exportRectCrop(ann));
+        btnRow.appendChild(exportBtn);
+        container.appendChild(btnRow);
+      }
+    }
+
+    function _exportRectCrop(ann) {
+      const imageLayers = sm.state.layers.filter(l => l.type === 'image' && l.visible);
+      if (imageLayers.length === 0) return;
+      const layerImgs = imageLayers.map(l => ({ layer: l, img: viewport.images.get(l.id) })).filter(x => x.img);
+      if (layerImgs.length === 0) return;
+      const maxW = Math.max(...layerImgs.map(x => x.img.naturalWidth));
+      const maxH = Math.max(...layerImgs.map(x => x.img.naturalHeight));
+      const composite = document.createElement('canvas');
+      composite.width = maxW;
+      composite.height = maxH;
+      const compCtx = composite.getContext('2d');
+      for (const { layer, img } of layerImgs) {
+        compCtx.globalAlpha = layer.opacity;
+        compCtx.drawImage(img, 0, 0);
+      }
+      compCtx.globalAlpha = 1;
+      const cropX = Math.max(0, Math.round(ann.x));
+      const cropY = Math.max(0, Math.round(ann.y));
+      const cropW = Math.min(Math.round(ann.width), composite.width - cropX);
+      const cropH = Math.min(Math.round(ann.height), composite.height - cropY);
+      if (cropW <= 0 || cropH <= 0) return;
+      const cvs = document.createElement('canvas');
+      cvs.width = cropW;
+      cvs.height = cropH;
+      const ctx = cvs.getContext('2d');
+      ctx.drawImage(composite, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      const a = document.createElement('a');
+      a.download = (ann.label || 'crop') + '.png';
+      a.href = cvs.toDataURL('image/png');
+      a.click();
+    }
+
+    const _riFieldsMap = {
+      point: [{ id: 'ri-x', label: 'X' }, { id: 'ri-y', label: 'Y' }],
+      rect: [{ id: 'ri-x', label: 'X' }, { id: 'ri-y', label: 'Y' }, { id: 'ri-w', label: 'W' }, { id: 'ri-h', label: 'H' }],
+      'rect-diag': [{ id: 'ri-x1', label: 'X1' }, { id: 'ri-y1', label: 'Y1' }, { id: 'ri-x2', label: 'X2' }, { id: 'ri-y2', label: 'Y2' }],
+      line: [{ id: 'ri-x1', label: 'X1' }, { id: 'ri-y1', label: 'Y1' }, { id: 'ri-x2', label: 'X2' }, { id: 'ri-y2', label: 'Y2' }],
+      circle: [{ id: 'ri-cx', label: 'CX' }, { id: 'ri-cy', label: 'CY' }, { id: 'ri-r', label: 'R' }]
+    };
+
+    const _riHints = {
+      point: '格式: [x, y]',
+      rect: '格式: [x, y, w, h]',
+      'rect-diag': '格式: [x1, y1, x2, y2]',
+      line: '格式: [x1, y1, x2, y2]',
+      circle: '格式: [cx, cy, r]'
+    };
+
+    function renderReverseInputFields() {
+      const type = document.getElementById('ri-type').value;
+      const container = document.getElementById('ri-fields');
+      container.innerHTML = '';
+      const fields = _riFieldsMap[type] || [];
+      for (const f of fields) {
+        const row = document.createElement('div');
+        row.className = 'input-row';
+        const label = document.createElement('label');
+        label.textContent = f.label;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = 'any';
+        input.id = f.id;
+        input.placeholder = '0';
+        row.appendChild(label);
+        row.appendChild(input);
+        container.appendChild(row);
+      }
+      const hintEl = document.getElementById('ri-array-hint');
+      if (hintEl) hintEl.textContent = _riHints[type] || '支持逗号或空格分隔';
+      const arrayEl = document.getElementById('ri-array');
+      if (arrayEl) arrayEl.value = '';
+    }
+
+    function _parseArrayInput() {
+      const raw = document.getElementById('ri-array').value.trim();
+      if (!raw) return null;
+      const cleaned = raw.replace(/[\[\]]/g, '');
+      const vals = cleaned.split(/[\s,;]+/).map(Number).filter(v => !isNaN(v));
+      return vals.length > 0 ? vals : null;
+    }
+
+    function handleReverseInput() {
+      const type = document.getElementById('ri-type').value;
+      const layer = layerManager.getActiveLayer();
+      if (!layer || layer.type === 'image') return;
+
+      const arrVals = _parseArrayInput();
+      let ann;
+      switch (type) {
+        case 'point': {
+          let x, y;
+          if (arrVals && arrVals.length >= 2) { x = arrVals[0]; y = arrVals[1]; }
+          else { x = parseFloat(document.getElementById('ri-x').value); y = parseFloat(document.getElementById('ri-y').value); }
+          if (isNaN(x) || isNaN(y)) return;
+          ann = createAnnotation('point', layer.id, { x, y });
+          break;
+        }
+        case 'rect': {
+          let x, y, w, h;
+          if (arrVals && arrVals.length >= 4) { x = arrVals[0]; y = arrVals[1]; w = arrVals[2]; h = arrVals[3]; }
+          else { x = parseFloat(document.getElementById('ri-x').value); y = parseFloat(document.getElementById('ri-y').value); w = parseFloat(document.getElementById('ri-w').value); h = parseFloat(document.getElementById('ri-h').value); }
+          if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h)) return;
+          ann = createAnnotation('rect', layer.id, { x, y, width: w, height: h });
+          break;
+        }
+        case 'rect-diag': {
+          let x1, y1, x2, y2;
+          if (arrVals && arrVals.length >= 4) { x1 = arrVals[0]; y1 = arrVals[1]; x2 = arrVals[2]; y2 = arrVals[3]; }
+          else { x1 = parseFloat(document.getElementById('ri-x1').value); y1 = parseFloat(document.getElementById('ri-y1').value); x2 = parseFloat(document.getElementById('ri-x2').value); y2 = parseFloat(document.getElementById('ri-y2').value); }
+          if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) return;
+          const x = Math.min(x1, x2), y = Math.min(y1, y2);
+          const w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+          ann = createAnnotation('rect', layer.id, { x, y, width: w, height: h });
+          break;
+        }
+        case 'line': {
+          let x1, y1, x2, y2;
+          if (arrVals && arrVals.length >= 4) { x1 = arrVals[0]; y1 = arrVals[1]; x2 = arrVals[2]; y2 = arrVals[3]; }
+          else { x1 = parseFloat(document.getElementById('ri-x1').value); y1 = parseFloat(document.getElementById('ri-y1').value); x2 = parseFloat(document.getElementById('ri-x2').value); y2 = parseFloat(document.getElementById('ri-y2').value); }
+          if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) return;
+          ann = createAnnotation('line', layer.id, { x1, y1, x2, y2 });
+          break;
+        }
+        case 'circle': {
+          let cx, cy, r;
+          if (arrVals && arrVals.length >= 3) { cx = arrVals[0]; cy = arrVals[1]; r = arrVals[2]; }
+          else { cx = parseFloat(document.getElementById('ri-cx').value); cy = parseFloat(document.getElementById('ri-cy').value); r = parseFloat(document.getElementById('ri-r').value); }
+          if (isNaN(cx) || isNaN(cy) || isNaN(r)) return;
+          ann = createAnnotation('circle', layer.id, { cx, cy, radius: r });
+          break;
+        }
+      }
+
+      if (!ann) return;
+      const prevId = sm.state.selectedId;
+      const prevAnn = findAnnotation(prevId);
+      layer.annotations.push(ann);
+      if (prevAnn) prevAnn.selected = false;
+      ann.selected = true;
+      sm.state.selectedId = ann.id;
+
+      sm.execute(new Action(
+        () => {
+          if (!layer.annotations.includes(ann)) layer.annotations.push(ann);
+          ann.selected = true; sm.state.selectedId = ann.id;
+          bus.emit('annotation:added', ann);
+          bus.emit('annotation:selected', ann.id);
+          renderer.renderAll();
+        },
+        () => {
+          layer.annotations = layer.annotations.filter(a => a.id !== ann.id);
+          if (prevAnn) { prevAnn.selected = true; sm.state.selectedId = prevId; }
+          else sm.state.selectedId = null;
+          bus.emit('annotation:removed', ann.id);
+          renderer.renderAll();
+        }
+      ));
+    }
+
+    document.getElementById('ri-type').addEventListener('change', renderReverseInputFields);
+    document.getElementById('btn-add-annotation').addEventListener('click', handleReverseInput);
+    renderReverseInputFields();
+    renderPropertyPanel();
+
+    bus.on('annotation:selected', () => renderPropertyPanel());
+    bus.on('annotation:updated', () => renderPropertyPanel());
+
+    bus.on('viewport:changed', (vp) => {
+      document.getElementById('status-zoom').textContent = `缩放: ${Math.round(vp.scale * 100)}%`;
+    });
+
+    function renderLayerPanel() {
+      const container = document.getElementById('layer-list');
+      container.innerHTML = '';
+      const layers = [...sm.state.layers].reverse();
+      for (const layer of layers) {
+        const item = document.createElement('div');
+        item.className = 'layer-item' + (layer.id === sm.state.activeLayerId ? ' active' : '');
+        item.dataset.layerId = layer.id;
+        item.innerHTML = `
+          <div class="layer-header" draggable="true">
+            <span class="layer-type-icon">${layer.type === 'image' ? '🖼' : '📝'}</span>
+            <span class="layer-name">${layer.name}</span>
+            <button class="layer-btn visibility-btn" title="切换可见性">${layer.visible ? '👁' : '👁‍🗨'}</button>
+            <button class="layer-btn delete-btn" title="删除图层">✕</button>
+          </div>
+          <div class="layer-opacity">
+            <span style="font-size:11px;color:var(--text-muted)">透明</span>
+            <input type="range" min="0" max="100" value="${Math.round(layer.opacity * 100)}" class="opacity-slider">
+            <span class="opacity-value">${Math.round(layer.opacity * 100)}%</span>
+          </div>
+        `;
+        item.querySelector('.layer-header').addEventListener('click', (e) => {
+          if (e.target.closest('.layer-btn')) return;
+          sm.update({ activeLayerId: layer.id });
+          renderLayerPanel();
+        });
+        item.querySelector('.visibility-btn').addEventListener('click', () => {
+          layerManager.toggleVisibility(layer.id);
+          renderLayerPanel();
+        });
+        item.querySelector('.opacity-slider').addEventListener('input', (e) => {
+          const val = parseInt(e.target.value);
+          layerManager.setOpacity(layer.id, val / 100);
+          item.querySelector('.opacity-value').textContent = val + '%';
+        });
+        item.querySelector('.delete-btn').addEventListener('click', () => {
+          const imageLayers = sm.state.layers.filter(l => l.type === 'image');
+          if (layer.type === 'image' && imageLayers.length <= 1) return;
+          layerManager.removeLayer(layer.id);
+        });
+        const header = item.querySelector('.layer-header');
+        header.addEventListener('dragstart', (e) => {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', layer.id);
+          item.classList.add('dragging');
+        });
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+          container.querySelectorAll('.layer-item').forEach(el => el.classList.remove('drag-over'));
+        });
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          container.querySelectorAll('.layer-item').forEach(el => el.classList.remove('drag-over'));
+          item.classList.add('drag-over');
+        });
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over');
+        });
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          container.querySelectorAll('.layer-item').forEach(el => el.classList.remove('drag-over'));
+          const dragId = e.dataTransfer.getData('text/plain');
+          if (dragId === layer.id) return;
+          const allReversed = [...sm.state.layers].reverse();
+          const fromIdx = allReversed.findIndex(l => l.id === dragId);
+          const toIdx = allReversed.findIndex(l => l.id === layer.id);
+          if (fromIdx === -1 || toIdx === -1) return;
+          const realToOrder = sm.state.layers.length - 1 - toIdx;
+          layerManager.moveLayer(dragId, realToOrder);
+          renderLayerPanel();
+        });
+        container.appendChild(item);
+      }
+    }
+
+    function renderAnnotationList() {
+      const container = document.getElementById('annotation-list');
+      container.innerHTML = '';
+      const typeIcons = { point: '●', rect: '■', line: '╱', circle: '○' };
+      for (const layer of sm.state.layers) {
+        if (layer.type === 'image') continue;
+        const anns = layer.annotations || [];
+        if (anns.length === 0) continue;
+        const header = document.createElement('div');
+        header.className = 'ann-group-header';
+        header.textContent = layer.name;
+        container.appendChild(header);
+        for (const ann of anns) {
+          const item = document.createElement('div');
+          item.className = 'ann-item' + (ann.id === sm.state.selectedId ? ' selected' : '');
+          let info = '';
+          switch (ann.type) {
+            case 'point': info = `(${Math.round(ann.x)}, ${Math.round(ann.y)})`; break;
+            case 'rect': info = `${Math.round(ann.width)}×${Math.round(ann.height)} @ (${Math.round(ann.x)}, ${Math.round(ann.y)})`; break;
+            case 'line': info = `${Math.sqrt((ann.x2-ann.x1)**2 + (ann.y2-ann.y1)**2).toFixed(1)}px`; break;
+            case 'circle': info = `r=${ann.radius.toFixed(1)}`; break;
+          }
+          item.innerHTML = `<span style="color:${ann.color}">${typeIcons[ann.type]}</span> <span class="ann-label-text">${ann.label}</span> <span class="ann-info">${info}</span><button class="ann-delete" title="删除">✕</button>`;
+          let _clickTimer = null;
+          item.addEventListener('click', (e) => {
+            if (e.target.closest('.ann-delete')) return;
+            clearTimeout(_clickTimer);
+            _clickTimer = setTimeout(() => {
+              const current = findAnnotation(sm.state.selectedId);
+              if (current) current.selected = false;
+              ann.selected = true;
+              sm.state.selectedId = ann.id;
+              renderer.renderAll();
+              bus.emit('annotation:selected', ann.id);
+            }, 250);
+          });
+          item.addEventListener('dblclick', (e) => {
+            clearTimeout(_clickTimer);
+            if (e.target.closest('.ann-delete')) return;
+            e.stopPropagation();
+            const labelEl = item.querySelector('.ann-label-text');
+            if (!labelEl) return;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = ann.label;
+            input.style.cssText = 'width:80px;padding:1px 4px;font-size:12px;font-family:inherit;background:var(--bg-primary);border:1px solid var(--accent);color:var(--text);border-radius:3px;outline:none;user-select:text;-webkit-user-select:text;';
+            labelEl.replaceWith(input);
+            input.focus();
+            input.select();
+            const finish = () => {
+              const val = input.value.trim();
+              if (val) ann.label = val;
+              renderAnnotationList();
+              renderer.renderAll();
+            };
+            input.addEventListener('blur', finish);
+            input.addEventListener('keydown', (ke) => {
+              if (ke.key === 'Enter') input.blur();
+              if (ke.key === 'Escape') { input.value = ann.label; input.blur(); }
+            });
+          });
+          item.querySelector('.ann-delete').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const layer = sm.state.layers.find(l => l.id === ann.layerId);
+            if (!layer) return;
+            layer.annotations = layer.annotations.filter(a => a.id !== ann.id);
+            if (sm.state.selectedId === ann.id) sm.state.selectedId = null;
+            bus.emit('annotation:removed', ann.id);
+            renderer.renderAll();
+          });
+          container.appendChild(item);
+        }
+      }
+    }
+
+    bus.on('layer:added', renderLayerPanel);
+    bus.on('layer:removed', () => { renderLayerPanel(); renderAnnotationList(); });
+    bus.on('layer:reordered', renderLayerPanel);
+    bus.on('layers:changed', () => { renderLayerPanel(); renderAnnotationList(); });
+    bus.on('annotation:added', renderAnnotationList);
+    bus.on('annotation:removed', renderAnnotationList);
+    bus.on('annotation:selected', renderAnnotationList);
+
+    document.getElementById('btn-add-layer').addEventListener('click', () => fileInput.click());
+
+    renderLayerPanel();
+    renderAnnotationList();
+
+    (function() {
+      let activeMenu = null;
+
+      document.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const dropdown = item.querySelector('.menu-dropdown');
+          if (!dropdown) return;
+          if (activeMenu && activeMenu !== dropdown) {
+            activeMenu.classList.remove('show');
+          }
+          dropdown.classList.toggle('show');
+          activeMenu = dropdown.classList.contains('show') ? dropdown : null;
+        });
+      });
+
+      document.addEventListener('click', () => {
+        if (activeMenu) {
+          activeMenu.classList.remove('show');
+          activeMenu = null;
+        }
+      });
+
+      document.querySelectorAll('.menu-dropdown-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const action = item.dataset.action;
+          if (!action) return;
+
+          switch (action) {
+            case 'open-image': fileInput.click(); break;
+            case 'overlay-image': fileInput.click(); break;
+            case 'add-ann-layer': {
+              const c = sm.state.layers.filter(l => l.type === 'annotation').length;
+              layerManager.addAnnotationLayer('标注-' + (c + 1));
+              break;
+            }
+            case 'clear-canvas':
+              sm.state.layers.forEach(l => { if (l.type === 'image') viewport.removeImage(l.id); });
+              sm.state.layers.length = 0;
+              sm.state.activeLayerId = null;
+              sm.state.selectedId = null;
+              sm.state.imageLoaded = false;
+              sm.state.imageSize = { width: 0, height: 0 };
+              sm._undoStack.length = 0;
+              sm._redoStack.length = 0;
+              viewport.render();
+              bus.emit('layers:changed');
+              break;
+            case 'undo': sm.undo(); break;
+            case 'redo': sm.redo(); break;
+            case 'delete-selected': bus.emit('annotation:delete-selected'); break;
+            case 'select-all': {
+              const layer = layerManager.getActiveLayer();
+              if (!layer) return;
+              const prev = findAnnotation(sm.state.selectedId);
+              if (prev) prev.selected = false;
+              layer.annotations.forEach(a => a.selected = true);
+              if (layer.annotations.length > 0) {
+                sm.state.selectedId = layer.annotations[layer.annotations.length - 1].id;
+              }
+              renderer.renderAll();
+              bus.emit('annotation:selected', sm.state.selectedId);
+              break;
+            }
+            case 'zoom-in': toolManager._zoomIn(); break;
+            case 'zoom-out': toolManager._zoomOut(); break;
+            case 'fit-canvas': bus.emit('viewport:fit'); break;
+            case 'toggle-left-panel': togglePanel('left-panel'); break;
+            case 'toggle-right-panel': togglePanel('right-panel'); break;
+            case 'tool-select': toolManager.setActive('select'); break;
+            case 'tool-point': toolManager.setActive('point'); break;
+            case 'tool-rect': toolManager.setActive('rect'); break;
+            case 'tool-line': toolManager.setActive('line'); break;
+            case 'tool-circle': toolManager.setActive('circle'); break;
+            case 'tool-pan': toolManager.setActive('pan'); break;
+            case 'show-shortcuts': document.getElementById('shortcuts-modal').classList.remove('hidden'); break;
+            case 'show-about': document.getElementById('about-modal').classList.remove('hidden'); break;
+          }
+
+          if (activeMenu) {
+            activeMenu.classList.remove('show');
+            activeMenu = null;
+          }
+        });
+      });
+    })();
+
+    function togglePanel(panelId) {
+      const panel = document.getElementById(panelId);
+      panel.classList.toggle('collapsed');
+      const expandBtn = document.getElementById(panelId + '-expand');
+      if (expandBtn) expandBtn.style.display = panel.classList.contains('collapsed') ? 'block' : 'none';
+    }
+
+    bus.on('viewport:fit', () => {
+      const imgSize = sm.state.imageSize;
+      if (imgSize.width && imgSize.height) {
+        viewport.fitToCanvas(imgSize.width, imgSize.height);
+      }
+    });
+
+    bus.on('layers:changed', () => {
+      const imgSize = sm.state.imageSize;
+      if (imgSize.width && imgSize.height) {
+        document.getElementById('status-image-size').textContent = '图片: ' + imgSize.width + ' × ' + imgSize.height;
+      } else {
+        document.getElementById('status-image-size').textContent = '图片: -';
+      }
+      document.getElementById('empty-state').style.display = sm.state.imageLoaded ? 'none' : 'flex';
+      const firstImg = sm.state.layers.find(l => l.type === 'image');
+      document.title = firstImg ? firstImg.name + ' - imgMeasure' : 'imgMeasure - 工程图像测量标注工具';
+    });
+
+    bus.on('layer:added', (layer) => {
+      if (layer.type === 'image') {
+        document.title = layer.name + ' - imgMeasure';
+      }
+    });
+
+    const emptyState = document.getElementById('empty-state');
+    emptyState.addEventListener('click', () => fileInput.click());
+
+    canvasArea.addEventListener('dragenter', () => { if (!sm.state.imageLoaded) emptyState.classList.add('drag-over'); });
+    canvasArea.addEventListener('dragleave', (e) => {
+      if (!canvasArea.contains(e.relatedTarget)) emptyState.classList.remove('drag-over');
+    });
+    canvasArea.addEventListener('drop', () => emptyState.classList.remove('drag-over'));
+
+    const _toolIcons = { select: '↖', point: '⊙', rect: '▭', line: '╱', circle: '○', pan: '✋' };
+    const _toolNames = { select: '选择', point: '点标记', rect: '矩形', line: '线段', circle: '圆', pan: '平移' };
+
+    bus.on('tool:changed', (tool) => {
+      const container = document.getElementById('canvas-container');
+      const cursors = { select: 'default', point: 'crosshair', rect: 'crosshair', line: 'crosshair', circle: 'crosshair', pan: 'grab' };
+      container.style.cursor = cursors[tool] || 'default';
+
+      document.getElementById('tool-indicator-icon').textContent = _toolIcons[tool] || '↖';
+      document.getElementById('tool-indicator-name').textContent = _toolNames[tool] || tool;
+
+      document.querySelectorAll('#dropdown-tools .menu-dropdown-item').forEach(item => {
+        const action = item.dataset.action;
+        const toolName = action ? action.replace('tool-', '') : '';
+        item.classList.toggle('active-tool', toolName === tool);
+      });
+    });
+
+    bus.emit('tool:changed', sm.state.activeTool);
+
+    window.addEventListener('beforeunload', (e) => {
+      const hasAnnotations = sm.state.layers.some(l => l.type === 'annotation' && l.annotations && l.annotations.length > 0);
+      if (hasAnnotations) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+  </script>
+</body>
+</html>

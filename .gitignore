@@ -1,0 +1,13 @@
+superpowers/
+.superpowers/
+temp/
+tmp/
+out/
+.DS_Store
+
+*.jpg
+*.png
+*.yaml
+*.yml
+*.zip
+
